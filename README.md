@@ -23,7 +23,7 @@ prevent multiple instances from running at the same time.
 
     $ clamavmirror -h
 
-Usage: clamavmirror.py [options]
+Usage: clamavmirror [options]
 
 ```bash
 Options:

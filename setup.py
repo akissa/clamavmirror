@@ -43,7 +43,7 @@ def main():
 
     opts = dict(
         name="clamavmirror",
-        version='0.0.1',
+        version='0.0.2',
         description="ClamAV Signature Mirroring Tool",
         long_description=get_readme(),
         keywords="clamav mirror mirroring mirror-tool signatures",
