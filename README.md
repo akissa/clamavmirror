@@ -40,7 +40,8 @@ Options:
   -g GROUP, --group=GROUP
                         Change file group to this group
   -l LOCKDIR, --locks-directory=LOCKDIR
-                        Lock files directory```
+                        Lock files directory
+```
 
 ## Example Usage
 
