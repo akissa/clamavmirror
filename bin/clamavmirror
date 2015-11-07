@@ -28,7 +28,7 @@ instances from running at the same time.
 Requirements
 ------------
 
-UrlGrabber module - http://urlgrabber.baseurl.org/
+Urllib3 module - https://urllib3.readthedocs.org
 DNS-Python module - http://www.dnspython.org/
 
 Usage
@@ -69,23 +69,24 @@ import fcntl
 import hashlib
 import logging
 
-import urlgrabber.grabber
+import certifi
 
 from shutil import move
+from Queue import Queue
 from random import shuffle
+from threading import Thread
 from optparse import OptionParser
 from subprocess import PIPE, Popen
 
-from urlgrabber.mirror import MirrorGroup
-from urlgrabber.progress import text_progress_meter
-from urlgrabber.grabber import URLGrabber, URLGrabError
+from urllib3 import PoolManager, Timeout
+from urllib3.util.request import make_headers
 from dns.resolver import query, Resolver, NXDOMAIN, NoAnswer
 
 
 def setup_logging(loglevel):
     """Setup logging"""
     try:
-        # pylint: disable-msg=W0212
+        # pylint: disable=protected-access
         level = logging._levelNames.get(loglevel, None)
         if level is None:
             level = int(loglevel)
@@ -100,7 +101,7 @@ def setup_logging(loglevel):
         dbobj.setLevel(level)
     except (KeyError, ImportError, ValueError):
         dbobj = None
-    urlgrabber.grabber.set_logger(dbobj)
+    # urlgrabber.grabber.set_logger(dbobj)
 
 
 def get_file_md5(filename):
@@ -249,7 +250,7 @@ def failure_cb(obj):
           (obj.url, obj.tries, obj.retry))
 
 
-# pylint: disable-msg=W0613
+# pylint: disable=unused-argument
 def check_download(obj, *args, **kwargs):
     """Verify a download"""
     version = args[0]
@@ -260,45 +261,48 @@ def check_download(obj, *args, **kwargs):
         if not verify_sigfile(workdir, signame) or version != local_version:
             error("[-] \033[91mFailed to verify signature: %s from: %s\033[0m"
                   % (signame, obj.url))
-            raise URLGrabError(-1)
+            raise ValueError('Failed to verify signature: %s' % signame)
+            # raise URLGrabError(-1)
 
 
 def download_sig(opts, ips, sig, version=None):
     """Download signature for IP list"""
     code = None
     downloaded = False
-    try:
-        shuffle(ips)
-        if opts.verbose:
-            setup_logging('INFO')
-        sendargs = (version, opts.workdir, sig)
-        useagent = 'ClamAV/0.98.7 (OS: linux-gnu, ARCH: x86_64, CPU: x86_64)'
-        grabber = URLGrabber(progress_obj=text_progress_meter(), timeout=2,
-                             reget=None, user_agent=useagent,
-                             checkfunc=(check_download, sendargs, {}),
-                             failure_callback=failure_cb)
-        mirrorgrp = MirrorGroup(grabber,
-                                ['http://%s' % mirror for mirror in ips])
+    useagent = 'ClamAV/0.98.7 (OS: linux-gnu, ARCH: x86_64, CPU: x86_64)'
+    manager = PoolManager(
+        headers=make_headers(user_agent=useagent),
+        cert_reqs='CERT_REQUIRED',
+        ca_certs=certifi.where(),
+        timeout=Timeout(connect=1.0)
+    )
+    shuffle(ips)
+    for _ip in ips:
         if version:
             path = '/%s.cvd' % sig
             filename = os.path.join(opts.workdir, '%s.cvd' % sig)
         else:
             path = '/%s.cdiff' % sig
             filename = os.path.join(opts.workdir, '%s.cdiff' % sig)
-
-        mirrorgrp.urlgrab(path, filename=filename)
-        code = 200
-        downloaded = os.path.exists(filename)
-    except URLGrabError, err:
-        code = 404
-        error('[Errno %i]: %s' % (err.errno, err.strerror))
+        try:
+            req = manager.request('GET', 'http://%s%s' % (_ip, path))
+        except BaseException as msg:
+            error("Request error: %s" % msg)
+            continue
+        data = req.data
+        code = req.status
+        if req.status == 200:
+            with open(filename, 'w') as handle:
+                handle.write(data)
+            downloaded = os.path.exists(filename)
+            break
     return downloaded, code
 
 
 def get_addrs(hostname):
     """get addrs"""
     count = 1
-    addrs = None
+    addrs = []
     for passno in range(1, 6):
         count = passno
         info("[+] \033[92mResolving hostname:\033[0m %s pass: %d" %
@@ -313,7 +317,7 @@ def get_addrs(hostname):
                 time.sleep(5)
         except NoAnswer:
             pass
-    if not addrs:
+    if not len(addrs):
         error("=> Resolving hostname: %s failed after %d tries" %
               (hostname, count))
         sys.exit(2)
@@ -353,31 +357,35 @@ def copy_sig(sig, opts, isdiff):
     info("=> Deployed signature: %s" % sig)
 
 
-def update_sig(options, addrs, sign, vers):
+def update_sig(queue):
     """update signature"""
-    info("[+] \033[92mChecking signature version:\033[0m %s" % sign)
-    localver = get_local_version(options.mirrordir, sign)
-    remotever = vers[sign]
-    if localver is None or (localver and int(localver) < int(remotever)):
-        info("=> Update required local: %s => remote: %s" %
-             (localver, remotever))
-        for passno in range(1, 6):
-            info("=> Downloading signature: %s pass: %d" % (sign, passno))
-            status, code = download_sig(options, addrs, sign, remotever)
-            if status:
-                info("=> Downloaded signature: %s" % sign)
-                copy_sig(sign, options, 0)
-                break
-            else:
-                if code == 404:
-                    error("=> \033[91mSignature:\033[0m %s not found,"
-                          " will not retry" % sign)
+    while True:
+        options, addrs, sign, vers = queue.get()
+        info("[+] \033[92mChecking signature version:\033[0m %s" % sign)
+        localver = get_local_version(options.mirrordir, sign)
+        remotever = vers[sign]
+        if localver is None or (localver and int(localver) < int(remotever)):
+            info("=> Update required local: %s => remote: %s" %
+                 (localver, remotever))
+            for passno in range(1, 6):
+                info("=> Downloading signature: %s pass: %d" % (sign, passno))
+                status, code = download_sig(options, addrs, sign, remotever)
+                if status:
+                    info("=> Downloaded signature: %s" % sign)
+                    copy_sig(sign, options, 0)
                     break
-                error("=> \033[91mDownload failed:\033[0m %s "
-                      "pass: %d, sleeping 5sec" % (sign, passno))
-                time.sleep(5)
-    else:
-        info("=> No update required L: %s => R: %s" % (localver, remotever))
+                else:
+                    if code == 404:
+                        error("=> \033[91mSignature:\033[0m %s not found,"
+                              " will not retry" % sign)
+                        break
+                    error("=> \033[91mDownload failed:\033[0m %s "
+                          "pass: %d, sleeping 5sec" % (sign, passno))
+                    time.sleep(5)
+        else:
+            info(
+                "=> No update required L: %s => R: %s" % (localver, remotever))
+        queue.task_done()
 
 
 def update_diff(opts, addrs, sig):
@@ -413,30 +421,64 @@ def create_dns_file(opts, record):
         info("=> No update required L: %s => R: %s" % (localmd5, remotemd5))
 
 
+def download_diffs(queue):
+    """Download the cdiff files"""
+    while True:
+        options, addrs, signature_type, localver, remotever = queue.get()
+        for num in range(int(localver), int(remotever) + 1):
+            sig_diff = '%s-%d' % (signature_type, num)
+            filename = os.path.join(options.mirrordir, '%s.cdiff' % sig_diff)
+            if not os.path.exists(filename):
+                update_diff(options, addrs, sig_diff)
+        queue.task_done()
+
+
 def main(options):
     """The main functions"""
+    # pylint: disable=too-many-locals
     addrs = get_addrs(options.hostname)
     addrs.extend(get_addrs('db.us.big.clamav.net.'))
     addrs = list(set(addrs))
     record = get_record(options)
-    # pylint: disable-msg=W0621
     _, mainv, dailyv, _, _, _, safebrowsingv, bytecodev = record.split(':')
     versions = {'main': mainv, 'daily': dailyv,
                 'safebrowsing': safebrowsingv,
                 'bytecode': bytecodev}
+    dqueue = Queue(maxsize=0)
+    dqueue_workers = 4
+    info("[+] \033[92mStarting workers\033[0m")
+    for index in range(dqueue_workers):
+        info("=> Starting diff download worker: %d" % (index + 1))
+        worker = Thread(target=download_diffs, args=(dqueue,))
+        worker.setDaemon(True)
+        worker.start()
+    mqueue = Queue(maxsize=0)
+    mqueue_workers = 5
+    for index in range(mqueue_workers):
+        info("=> Starting signature download worker: %d" % (index + 1))
+        worker = Thread(target=update_sig, args=(mqueue,))
+        worker.setDaemon(True)
+        worker.start()
     for signature_type in ['main', 'daily', 'bytecode', 'safebrowsing']:
         if signature_type in ['daily', 'bytecode', 'safebrowsing']:
-            # download diffs
+            # cdiff downloads
             localver = get_local_version(options.mirrordir, signature_type)
-            remotever = locals()['%sv' % signature_type]
+            remotever = versions[signature_type]
             if localver is not None:
-                for num in range(int(localver), int(remotever) + 1):
-                    sig_diff = '%s-%d' % (signature_type, num)
-                    filename = os.path.join(options.mirrordir,
-                                            '%s.cdiff' % sig_diff)
-                    if not os.path.exists(filename):
-                        update_diff(options, addrs, sig_diff)
-        update_sig(options, addrs, signature_type, versions)
+                dqueue.put(
+                    (
+                        options,
+                        addrs,
+                        signature_type,
+                        localver,
+                        remotever
+                    )
+                )
+        mqueue.put((options, addrs, signature_type, versions))
+    info("=> Waiting on workers to complete tasks")
+    dqueue.join()
+    mqueue.join()
+    info("=> Workers done processing queues")
     create_dns_file(options, record)
     sys.exit(0)
 

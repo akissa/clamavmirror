@@ -16,7 +16,7 @@ prevent multiple instances from running at the same time.
 
 ## Requirements
 
-* UrlGrabber module - http://urlgrabber.baseurl.org/
+* Urllib3 module - https://urllib3.readthedocs.org
 * DNS-Python module - http://www.dnspython.org/
 
 ## Usage

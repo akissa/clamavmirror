@@ -55,7 +55,7 @@ def main():
         scripts=['bin/clamavmirror'],
         include_package_data=True,
         zip_safe=False,
-        install_requires=['urlgrabber', 'dnspython'],
+        install_requires=['urllib3', 'dnspython', 'certifi'],
         classifiers=[
             'Development Status :: 4 - Beta',
             'Programming Language :: Python',
