@@ -67,7 +67,6 @@ import sys
 import time
 import fcntl
 import hashlib
-import logging
 
 import certifi
 
@@ -81,27 +80,6 @@ from subprocess import PIPE, Popen
 from urllib3 import PoolManager, Timeout
 from urllib3.util.request import make_headers
 from dns.resolver import query, Resolver, NXDOMAIN, NoAnswer
-
-
-def setup_logging(loglevel):
-    """Setup logging"""
-    try:
-        # pylint: disable=protected-access
-        level = logging._levelNames.get(loglevel, None)
-        if level is None:
-            level = int(loglevel)
-        if level < 1:
-            raise ValueError()
-
-        formatter = logging.Formatter('%(asctime)s %(message)s')
-        handler = logging.StreamHandler(sys.stdout)
-        handler.setFormatter(formatter)
-        dbobj = logging.getLogger('urlgrabber')
-        dbobj.addHandler(handler)
-        dbobj.setLevel(level)
-    except (KeyError, ImportError, ValueError):
-        dbobj = None
-    # urlgrabber.grabber.set_logger(dbobj)
 
 
 def get_file_md5(filename):
@@ -124,33 +102,6 @@ def get_md5(string):
     hasher = hashlib.md5()
     hasher.update(string)
     return hasher.hexdigest()
-
-
-def chunk_report(bytes_so_far, total_size):
-    """Display progress"""
-    percent = float(bytes_so_far) / total_size
-    percent = round(percent * 100, 2)
-    sys.stdout.write("[x] Downloaded %d of %d bytes (%0.2f%%)\r" %
-                     (bytes_so_far, total_size, percent))
-    if bytes_so_far >= total_size:
-        sys.stdout.write('\n')
-
-
-def chunk_read(response, handle, chunk_size=8192, report_hook=None):
-    """Read chunks"""
-    total_size = response.info().getheader('Content-Length').strip()
-    total_size = int(total_size)
-    bytes_so_far = 0
-    while 1:
-        chunk = response.read(chunk_size)
-        handle.write(chunk)
-        bytes_so_far += len(chunk)
-        if not chunk:
-            handle.close()
-            break
-        if report_hook:
-            report_hook(bytes_so_far, total_size)
-    return bytes_so_far
 
 
 def error(msg):
@@ -241,13 +192,6 @@ def verify_sigfile(sigdir, sig):
     sigtool = Popen(cmd, stdout=PIPE, stderr=PIPE)
     ret_val = sigtool.wait()
     return ret_val == 0
-
-
-def failure_cb(obj):
-    """Failure callback"""
-    error("[-] \033[91mRequest(s) for: %s failed, num of"
-          " tries: %s, retries: %s\033[0m" %
-          (obj.url, obj.tries, obj.retry))
 
 
 # pylint: disable=unused-argument
