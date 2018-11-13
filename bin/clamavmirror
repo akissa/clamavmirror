@@ -72,14 +72,13 @@ import certifi
 
 from shutil import move
 from Queue import Queue
-from random import shuffle
 from threading import Thread
 from optparse import OptionParser
 from subprocess import PIPE, Popen
 
 from urllib3 import PoolManager, Timeout
 from urllib3.util.request import make_headers
-from dns.resolver import query, Resolver, NXDOMAIN, NoAnswer
+from dns.resolver import query, NXDOMAIN
 
 
 def get_file_md5(filename):
@@ -133,36 +132,10 @@ def create_file(name, content):
         writefile.write(content)
 
 
-def get_name_servers():
-    """Get the name servers for clamav.net"""
-    answers = query('clamav.net', 'NS')
-    ips = []
-    for hostname in [rdata.to_text() for rdata in answers]:
-        try:
-            ipanswers = query(hostname, 'A')
-            ips.extend(['nameserver %s' % rdata.address
-                        for rdata in ipanswers])
-        except NXDOMAIN:
-            pass
-    shuffle(ips)
-    return ips
-
-
-def get_ip_addresses(hostname):
-    """Return ip addresses from hostname"""
-    try:
-        resolver = Resolver(filename=get_name_servers())
-        answers = resolver.query(hostname, 'A')
-        return [rdata.address for rdata in answers]
-    except NXDOMAIN:
-        return []
-
-
 def get_txt_record(hostname):
     """Get the text record"""
     try:
-        resolver = Resolver(filename=get_name_servers())
-        answers = resolver.query(hostname, 'TXT')
+        answers = query(hostname, 'TXT')
         return answers[0].strings[0]
     except (IndexError, NXDOMAIN):
         return ''
@@ -209,63 +182,34 @@ def check_download(obj, *args, **kwargs):
             # raise URLGrabError(-1)
 
 
-def download_sig(opts, ips, sig, version=None):
-    """Download signature for IP list"""
+def download_sig(opts, sig, version=None):
+    """Download signature from hostname"""
     code = None
     downloaded = False
-    useagent = 'ClamAV/0.98.7 (OS: linux-gnu, ARCH: x86_64, CPU: x86_64)'
+    useagent = 'ClamAV/0.100.1 (OS: linux-gnu, ARCH: x86_64, CPU: x86_64)'
     manager = PoolManager(
         headers=make_headers(user_agent=useagent),
         cert_reqs='CERT_REQUIRED',
         ca_certs=certifi.where(),
-        timeout=Timeout(connect=1.0)
+        timeout=Timeout(connect=10.0, read=60.0)
     )
-    shuffle(ips)
-    for _ip in ips:
-        if version:
-            path = '/%s.cvd' % sig
-            filename = os.path.join(opts.workdir, '%s.cvd' % sig)
-        else:
-            path = '/%s.cdiff' % sig
-            filename = os.path.join(opts.workdir, '%s.cdiff' % sig)
-        try:
-            req = manager.request('GET', 'http://%s%s' % (_ip, path))
-        except BaseException as msg:
-            error("Request error: %s" % msg)
-            continue
-        data = req.data
-        code = req.status
-        if req.status == 200:
-            with open(filename, 'w') as handle:
-                handle.write(data)
-            downloaded = os.path.exists(filename)
-            break
+    if version:
+        path = '/%s.cvd' % sig
+        filename = os.path.join(opts.workdir, '%s.cvd' % sig)
+    else:
+        path = '/%s.cdiff' % sig
+        filename = os.path.join(opts.workdir, '%s.cdiff' % sig)
+    try:
+        req = manager.request('GET', 'http://%s%s' % (opts.hostname, path))
+    except BaseException as msg:
+        error("Request error: %s" % msg)
+    data = req.data
+    code = req.status
+    if req.status == 200:
+        with open(filename, 'w') as handle:
+            handle.write(data)
+        downloaded = os.path.exists(filename)
     return downloaded, code
-
-
-def get_addrs(hostname):
-    """get addrs"""
-    count = 1
-    addrs = []
-    for passno in range(1, 6):
-        count = passno
-        info("[+] \033[92mResolving hostname:\033[0m %s pass: %d" %
-             (hostname, passno))
-        try:
-            addrs = get_ip_addresses(hostname)
-            if addrs:
-                info("=> Resolved to: %s" % ','.join(addrs))
-                break
-            else:
-                info("=> Resolution failed, sleeping 5 secs")
-                time.sleep(5)
-        except NoAnswer:
-            pass
-    if not len(addrs):
-        error("=> Resolving hostname: %s failed after %d tries" %
-              (hostname, count))
-        sys.exit(2)
-    return addrs
 
 
 def get_record(opts):
@@ -304,7 +248,7 @@ def copy_sig(sig, opts, isdiff):
 def update_sig(queue):
     """update signature"""
     while True:
-        options, addrs, sign, vers = queue.get()
+        options, sign, vers = queue.get()
         info("[+] \033[92mChecking signature version:\033[0m %s" % sign)
         localver = get_local_version(options.mirrordir, sign)
         remotever = vers[sign]
@@ -313,7 +257,7 @@ def update_sig(queue):
                  (localver, remotever))
             for passno in range(1, 6):
                 info("=> Downloading signature: %s pass: %d" % (sign, passno))
-                status, code = download_sig(options, addrs, sign, remotever)
+                status, code = download_sig(options, sign, remotever)
                 if status:
                     info("=> Downloaded signature: %s" % sign)
                     copy_sig(sign, options, 0)
@@ -332,12 +276,12 @@ def update_sig(queue):
         queue.task_done()
 
 
-def update_diff(opts, addrs, sig):
+def update_diff(opts, sig):
     """Update diff"""
     for passno in range(1, 6):
         info("[+] \033[92mDownloading cdiff:\033[0m %s pass: %d" %
              (sig, passno))
-        status, code = download_sig(opts, addrs, sig)
+        status, code = download_sig(opts, sig)
         if status:
             info("=> Downloaded cdiff: %s" % sig)
             copy_sig(sig, opts, 1)
@@ -368,21 +312,18 @@ def create_dns_file(opts, record):
 def download_diffs(queue):
     """Download the cdiff files"""
     while True:
-        options, addrs, signature_type, localver, remotever = queue.get()
+        options, signature_type, localver, remotever = queue.get()
         for num in range(int(localver), int(remotever) + 1):
             sig_diff = '%s-%d' % (signature_type, num)
             filename = os.path.join(options.mirrordir, '%s.cdiff' % sig_diff)
             if not os.path.exists(filename):
-                update_diff(options, addrs, sig_diff)
+                update_diff(options, sig_diff)
         queue.task_done()
 
 
 def main(options):
     """The main functions"""
     # pylint: disable=too-many-locals
-    addrs = get_addrs(options.hostname)
-    addrs.extend(get_addrs('db.us.big.clamav.net.'))
-    addrs = list(set(addrs))
     record = get_record(options)
     _, mainv, dailyv, _, _, _, safebrowsingv, bytecodev = record.split(':')
     versions = {'main': mainv, 'daily': dailyv,
@@ -412,13 +353,12 @@ def main(options):
                 dqueue.put(
                     (
                         options,
-                        addrs,
                         signature_type,
                         localver,
                         remotever
                     )
                 )
-        mqueue.put((options, addrs, signature_type, versions))
+        mqueue.put((options, signature_type, versions))
     info("=> Waiting on workers to complete tasks")
     dqueue.join()
     mqueue.join()
