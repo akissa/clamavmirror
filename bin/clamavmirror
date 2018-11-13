@@ -255,21 +255,16 @@ def update_sig(queue):
         if localver is None or (localver and int(localver) < int(remotever)):
             info("=> Update required local: %s => remote: %s" %
                  (localver, remotever))
-            for passno in range(1, 6):
-                info("=> Downloading signature: %s pass: %d" % (sign, passno))
-                status, code = download_sig(options, sign, remotever)
-                if status:
-                    info("=> Downloaded signature: %s" % sign)
-                    copy_sig(sign, options, 0)
-                    break
-                else:
-                    if code == 404:
-                        error("=> \033[91mSignature:\033[0m %s not found,"
-                              " will not retry" % sign)
-                        break
-                    error("=> \033[91mDownload failed:\033[0m %s "
-                          "pass: %d, sleeping 5sec" % (sign, passno))
-                    time.sleep(5)
+            info("=> Downloading signature: %s" % sign)
+            status, code = download_sig(options, sign, remotever)
+            if status:
+                info("=> Downloaded signature: %s" % sign)
+                copy_sig(sign, options, 0)
+            else:
+                if code == 404:
+                    error("=> \033[91mSignature:\033[0m %s not found" % sign)
+                error("=> \033[91mDownload failed:\033[0m %s code: %d"
+                      % (sign, code))
         else:
             info(
                 "=> No update required L: %s => R: %s" % (localver, remotever))
@@ -279,21 +274,16 @@ def update_sig(queue):
 def update_diff(opts, sig):
     """Update diff"""
     for passno in range(1, 6):
-        info("[+] \033[92mDownloading cdiff:\033[0m %s pass: %d" %
-             (sig, passno))
+        info("[+] \033[92mDownloading cdiff:\033[0m %s" % sig)
         status, code = download_sig(opts, sig)
         if status:
             info("=> Downloaded cdiff: %s" % sig)
             copy_sig(sig, opts, 1)
-            break
         else:
             if code == 404:
-                error("=> \033[91mSignature:\033[0m %s not found,"
-                      " will not retry" % sig)
-                break
-            error("=> \033[91mDownload failed:\033[0m %s pass: %d,"
-                  " sleeping 5sec" % (sig, passno))
-            time.sleep(5)
+                error("=> \033[91mSignature:\033[0m %s not found" % sig)
+            error("=> \033[91mDownload failed:\033[0m %s code: %d"
+                  % (sig, code))
 
 
 def create_dns_file(opts, record):
