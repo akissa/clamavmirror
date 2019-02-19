@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 # vim: ai ts=4 sts=4 et sw=4
 # clamavmirror: ClamAV Signature Mirroring Tool
-# Copyright (C) 2015 Andrew Colin Kissa <andrew@topdog.za.net>
+# Copyright (C) 2015-2019 Andrew Colin Kissa <andrew@topdog.za.net>
 #
 # This Source Code Form is subject to the terms of the Mozilla Public
 # License, v. 2.0. If a copy of the MPL was not distributed with this file,
@@ -9,12 +9,11 @@
 """
 clamavmirror: ClamAV Signature Mirroring Tool
 
-Copyright 2015, Andrew Colin Kissa
+Copyright 2015-2019, Andrew Colin Kissa
 Licensed under MPL 2.0.
 """
 import os
 
-# from imp import load_source
 from setuptools import setup
 
 
@@ -37,13 +36,12 @@ def get_readme():
     return long_description
 
 
-# pylint: disable-msg=W0142
 def main():
     """Main"""
 
     opts = dict(
         name="clamavmirror",
-        version='0.0.3',
+        version='0.0.4',
         description="ClamAV Signature Mirroring Tool",
         long_description=get_readme(),
         keywords="clamav mirror mirroring mirror-tool signatures",
@@ -52,7 +50,11 @@ def main():
         url="https://github.com/akissa/clamavmirror",
         license="MPL 2.0",
         packages=[],
-        scripts=['bin/clamavmirror'],
+        entry_points={
+            'console_scripts': [
+                'clamavmirror=clamavmirror:main'
+            ],
+        },
         include_package_data=True,
         zip_safe=False,
         install_requires=['urllib3', 'dnspython', 'certifi'],
