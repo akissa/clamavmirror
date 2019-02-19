@@ -67,11 +67,11 @@ import sys
 import time
 import fcntl
 import hashlib
-import optparse
 
 from shutil import move
 from Queue import Queue
 from threading import Thread
+from optparse import OptionParser
 from subprocess import PIPE, Popen
 
 import certifi
@@ -79,6 +79,13 @@ import certifi
 from urllib3 import PoolManager, Timeout
 from urllib3.util.request import make_headers
 from dns.resolver import query, NXDOMAIN
+
+
+VERSION_INFO = (0, 0, 4)
+__author__ = "Andrew Colin Kissa"
+__copyright__ = u"© 2016-2019 Andrew Colin Kissa"
+__email__ = "andrew@topdog.za.net"
+__version__ = ".".join(map(str, VERSION_INFO))
 
 
 def get_file_md5(filename):
@@ -191,7 +198,7 @@ def download_sig(opts, sig, version=None):
     """Download signature from hostname"""
     code = None
     downloaded = False
-    useagent = 'ClamAV/0.100.2 (OS: linux-gnu, ARCH: x86_64, CPU: x86_64)'
+    useagent = 'ClamAV/0.101.1 (OS: linux-gnu, ARCH: x86_64, CPU: x86_64)'
     manager = PoolManager(
         headers=make_headers(user_agent=useagent),
         cert_reqs='CERT_REQUIRED',
@@ -325,7 +332,7 @@ def work(options):
                 'safebrowsing': safebrowsingv,
                 'bytecode': bytecodev}
     dqueue = Queue(maxsize=0)
-    dqueue_workers = 4
+    dqueue_workers = 3
     info("[+] \033[92mStarting workers\033[0m")
     for index in range(dqueue_workers):
         info("=> Starting diff download worker: %d" % (index + 1))
@@ -333,7 +340,7 @@ def work(options):
         worker.setDaemon(True)
         worker.start()
     mqueue = Queue(maxsize=0)
-    mqueue_workers = 5
+    mqueue_workers = 4
     for index in range(mqueue_workers):
         info("=> Starting signature download worker: %d" % (index + 1))
         worker = Thread(target=update_sig, args=(mqueue,))
@@ -364,7 +371,7 @@ def work(options):
 
 def main():
     """Main entry point"""
-    parser = optparse.Optionparser()  # pylint: disable=no-member
+    parser = OptionParser()
     parser.add_option('-a', '--hostname',
                       help='ClamAV source server hostname',
                       dest='hostname',
