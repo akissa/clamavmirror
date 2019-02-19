@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 # vim: ai ts=4 sts=4 et sw=4
 # clamavmirror: ClamAV Signature Mirroring Tool
-# Copyright (C) 2015 Andrew Colin Kissa <andrew@topdog.za.net>
+# Copyright (C) 2015-2019 Andrew Colin Kissa <andrew@topdog.za.net>
 #
 # This Source Code Form is subject to the terms of the Mozilla Public
 # License, v. 2.0. If a copy of the MPL was not distributed with this file,
@@ -34,10 +34,10 @@ DNS-Python module - http://www.dnspython.org/
 Usage
 -----
 
-$ ./clamavmirror.py -h
-Usage: clamavmirror.py [options]
+$ clamavmirror -h
+Usage: clamavmirror [options]
 
-Options:
+options:
   -h, --help            show this help message and exit
   -a HOSTNAME, --hostname=HOSTNAME
                         ClamAV source server hostname
@@ -56,9 +56,9 @@ Options:
 Example Usage
 -------------
 
-./extras/scripts/clamavmirror.py -w ~/tmp/clamavtmp/ \
--d ~/tmp/clamavmirror/ -u andrew -g staff -a db.za.clamav.net \
--l ~/Downloads/
+clamavmirror -w ~/tmp/clamavtmp/ -d ~/tmp/clamavmirror/ \
+    -u andrew -g staff -a db.za.clamav.net \
+    -l ~/Downloads/
 """
 import os
 import pwd
@@ -67,14 +67,14 @@ import sys
 import time
 import fcntl
 import hashlib
-
-import certifi
+import optparse
 
 from shutil import move
 from Queue import Queue
 from threading import Thread
-from optparse import OptionParser
 from subprocess import PIPE, Popen
+
+import certifi
 
 from urllib3 import PoolManager, Timeout
 from urllib3.util.request import make_headers
@@ -87,23 +87,23 @@ def get_file_md5(filename):
         blocksize = 65536
         try:
             hasher = hashlib.md5()
-        except:
+        except BaseException:
             hasher = hashlib.new('md5', usedForSecurity=False)
         with open(filename, 'rb') as afile:
             buf = afile.read(blocksize)
-            while len(buf) > 0:
+            while len(buf) > 0:  # pylint: disable=len-as-condition
                 hasher.update(buf)
                 buf = afile.read(blocksize)
         return hasher.hexdigest()
-    else:
-        return ''
+
+    return ''
 
 
 def get_md5(string):
     """Get a string's MD5"""
     try:
         hasher = hashlib.md5()
-    except:
+    except BaseException:
         hasher = hashlib.new('md5', usedForSecurity=False)
     hasher.update(string)
     return hasher.hexdigest()
@@ -185,14 +185,13 @@ def check_download(obj, *args, **kwargs):
             error("[-] \033[91mFailed to verify signature: %s from: %s\033[0m"
                   % (signame, obj.url))
             raise ValueError('Failed to verify signature: %s' % signame)
-            # raise URLGrabError(-1)
 
 
 def download_sig(opts, sig, version=None):
     """Download signature from hostname"""
     code = None
     downloaded = False
-    useagent = 'ClamAV/0.100.1 (OS: linux-gnu, ARCH: x86_64, CPU: x86_64)'
+    useagent = 'ClamAV/0.100.2 (OS: linux-gnu, ARCH: x86_64, CPU: x86_64)'
     manager = PoolManager(
         headers=make_headers(user_agent=useagent),
         cert_reqs='CERT_REQUIRED',
@@ -279,7 +278,7 @@ def update_sig(queue):
 
 def update_diff(opts, sig):
     """Update diff"""
-    for passno in range(1, 6):
+    for _ in range(1, 6):
         info("[+] \033[92mDownloading cdiff:\033[0m %s" % sig)
         status, code = download_sig(opts, sig)
         if status:
@@ -317,8 +316,8 @@ def download_diffs(queue):
         queue.task_done()
 
 
-def main(options):
-    """The main functions"""
+def work(options):
+    """The work functions"""
     # pylint: disable=too-many-locals
     record = get_record(options)
     _, mainv, dailyv, _, _, _, safebrowsingv, bytecodev = record.split(':')
@@ -363,54 +362,59 @@ def main(options):
     sys.exit(0)
 
 
-if __name__ == '__main__':
-    PARSER = OptionParser()
-    PARSER.add_option('-a', '--hostname',
+def main():
+    """Main entry point"""
+    parser = optparse.Optionparser()  # pylint: disable=no-member
+    parser.add_option('-a', '--hostname',
                       help='ClamAV source server hostname',
                       dest='hostname',
                       type='str',
                       default='db.de.clamav.net')
-    PARSER.add_option('-r', '--text-record',
+    parser.add_option('-r', '--text-record',
                       help='ClamAV Updates TXT record',
                       dest='txtrecord',
                       type='str',
                       default='current.cvd.clamav.net')
-    PARSER.add_option('-w', '--work-directory',
+    parser.add_option('-w', '--work-directory',
                       help='Working directory',
                       dest='workdir',
                       type='str',
                       default='/var/spool/clamav-mirror')
-    PARSER.add_option('-d', '--mirror-directory',
+    parser.add_option('-d', '--mirror-directory',
                       help='The mirror directory',
                       dest='mirrordir',
                       type='str',
                       default='/srv/www/clamav')
-    PARSER.add_option('-u', '--user',
+    parser.add_option('-u', '--user',
                       help='Change file owner to this user',
                       dest='user',
                       type='str',
                       default='nginx')
-    PARSER.add_option('-g', '--group',
+    parser.add_option('-g', '--group',
                       help='Change file group to this group',
                       dest='group',
                       type='str',
                       default='nginx')
-    PARSER.add_option('-l', '--locks-directory',
+    parser.add_option('-l', '--locks-directory',
                       help='Lock files directory',
                       dest='lockdir',
                       type='str',
                       default='/var/lock/subsys')
-    PARSER.add_option('-v', '--verbose',
+    parser.add_option('-v', '--verbose',
                       help='Display verbose output',
                       dest='verbose',
                       action='store_true',
                       default=False)
-    OPTIONS, _ = PARSER.parse_args()
+    options, _ = parser.parse_args()
     try:
-        LOCKFILE = os.path.join(OPTIONS.lockdir, 'clamavmirror')
-        with open(LOCKFILE, 'w+') as lock:
+        lockfile = os.path.join(options.lockdir, 'clamavmirror')
+        with open(lockfile, 'w+') as lock:
             fcntl.lockf(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
-            main(OPTIONS)
+            work(options)
     except IOError:
         info("=> Another instance is already running")
         sys.exit(254)
+
+
+if __name__ == '__main__':
+    main()
