@@ -71,7 +71,7 @@ import hashlib
 
 from shutil import move
 
-# queue is called Queue in python3
+# Queue is called queue in python3
 if sys.version_info.major < 3:
     from Queue import Queue
 else:
