@@ -60,6 +60,7 @@ clamavmirror -w ~/tmp/clamavtmp/ -d ~/tmp/clamavmirror/ \
     -u andrew -g staff -a db.za.clamav.net \
     -l ~/Downloads/
 """
+from __future__ import print_function
 import os
 import pwd
 import grp
@@ -69,7 +70,13 @@ import fcntl
 import hashlib
 
 from shutil import move
-from queue import Queue
+
+# queue is called Queue in python3
+if sys.version_info.major < 3:
+    from Queue import Queue
+else:
+    from queue import Queue
+
 from threading import Thread
 from optparse import OptionParser
 from subprocess import PIPE, Popen
