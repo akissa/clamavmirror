@@ -69,7 +69,7 @@ import fcntl
 import hashlib
 
 from shutil import move
-from Queue import Queue
+from queue import Queue
 from threading import Thread
 from optparse import OptionParser
 from subprocess import PIPE, Popen
@@ -83,7 +83,7 @@ from dns.resolver import query, NXDOMAIN
 
 VERSION_INFO = (0, 0, 4)
 __author__ = "Andrew Colin Kissa"
-__copyright__ = u"© 2016-2019 Andrew Colin Kissa"
+__copyright__ = "© 2016-2019 Andrew Colin Kissa"
 __email__ = "andrew@topdog.za.net"
 __version__ = ".".join(map(str, VERSION_INFO))
 
@@ -118,18 +118,18 @@ def get_md5(string):
 
 def error(msg):
     """print to stderr"""
-    print >> sys.stderr, msg
+    print(msg, file=sys.stderr)
 
 
 def info(msg):
     """print to stdout"""
-    print >> sys.stdout, msg
+    print(msg, file=sys.stdout)
 
 
 def deploy_signature(source, dest, user=None, group=None):
     """Deploy a signature fole"""
     move(source, dest)
-    os.chmod(dest, 0644)
+    os.chmod(dest, 0o644)
     if user and group:
         try:
             uid = pwd.getpwnam(user).pw_uid
