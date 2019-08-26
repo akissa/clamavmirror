@@ -119,7 +119,7 @@ def get_md5(string):
         hasher = hashlib.md5()
     except BaseException:
         hasher = hashlib.new('md5', usedForSecurity=False)
-    hasher.update(string)
+    hasher.update(string.encode('utf-8'))
     return hasher.hexdigest()
 
 
@@ -156,7 +156,7 @@ def get_txt_record(hostname):
     """Get the text record"""
     try:
         answers = query(hostname, 'TXT')
-        return answers[0].strings[0]
+        return answers[0].strings[0].decode()
     except (IndexError, NXDOMAIN):
         return ''
 
@@ -169,7 +169,7 @@ def get_local_version(sigdir, sig):
         cmd = ['sigtool', '-i', filename]
         sigtool = Popen(cmd, stdout=PIPE, stderr=PIPE)
         while True:
-            line = sigtool.stdout.readline()
+            line = sigtool.stdout.readline().decode()
             if line and line.startswith('Version:'):
                 version = line.split()[1]
                 break
@@ -225,7 +225,7 @@ def download_sig(opts, sig, version=None):
     data = req.data
     code = req.status
     if req.status == 200:
-        with open(filename, 'w') as handle:
+        with open(filename, 'wb') as handle:
             handle.write(data)
         downloaded = os.path.exists(filename)
     return downloaded, code
