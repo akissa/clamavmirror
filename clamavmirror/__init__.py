@@ -60,6 +60,7 @@ clamavmirror -w ~/tmp/clamavtmp/ -d ~/tmp/clamavmirror/ \
     -u andrew -g staff -a db.za.clamav.net \
     -l ~/Downloads/
 """
+from __future__ import print_function
 import os
 import pwd
 import grp
@@ -69,7 +70,13 @@ import fcntl
 import hashlib
 
 from shutil import move
-from Queue import Queue
+
+# Queue is called queue in python3
+if sys.version_info.major < 3:
+    from Queue import Queue
+else:
+    from queue import Queue
+
 from threading import Thread
 from optparse import OptionParser
 from subprocess import PIPE, Popen
@@ -83,7 +90,7 @@ from dns.resolver import query, NXDOMAIN
 
 VERSION_INFO = (0, 0, 4)
 __author__ = "Andrew Colin Kissa"
-__copyright__ = u"© 2016-2019 Andrew Colin Kissa"
+__copyright__ = "© 2016-2019 Andrew Colin Kissa"
 __email__ = "andrew@topdog.za.net"
 __version__ = ".".join(map(str, VERSION_INFO))
 
@@ -112,24 +119,24 @@ def get_md5(string):
         hasher = hashlib.md5()
     except BaseException:
         hasher = hashlib.new('md5', usedForSecurity=False)
-    hasher.update(string)
+    hasher.update(string.encode('utf-8'))
     return hasher.hexdigest()
 
 
 def error(msg):
     """print to stderr"""
-    print >> sys.stderr, msg
+    print(msg, file=sys.stderr)
 
 
 def info(msg):
     """print to stdout"""
-    print >> sys.stdout, msg
+    print(msg, file=sys.stdout)
 
 
 def deploy_signature(source, dest, user=None, group=None):
     """Deploy a signature fole"""
     move(source, dest)
-    os.chmod(dest, 0644)
+    os.chmod(dest, 0o644)
     if user and group:
         try:
             uid = pwd.getpwnam(user).pw_uid
@@ -149,7 +156,7 @@ def get_txt_record(hostname):
     """Get the text record"""
     try:
         answers = query(hostname, 'TXT')
-        return answers[0].strings[0]
+        return answers[0].strings[0].decode()
     except (IndexError, NXDOMAIN):
         return ''
 
@@ -162,7 +169,7 @@ def get_local_version(sigdir, sig):
         cmd = ['sigtool', '-i', filename]
         sigtool = Popen(cmd, stdout=PIPE, stderr=PIPE)
         while True:
-            line = sigtool.stdout.readline()
+            line = sigtool.stdout.readline().decode()
             if line and line.startswith('Version:'):
                 version = line.split()[1]
                 break
@@ -218,7 +225,7 @@ def download_sig(opts, sig, version=None):
     data = req.data
     code = req.status
     if req.status == 200:
-        with open(filename, 'w') as handle:
+        with open(filename, 'wb') as handle:
             handle.write(data)
         downloaded = os.path.exists(filename)
     return downloaded, code
