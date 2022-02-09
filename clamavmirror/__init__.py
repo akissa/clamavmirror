@@ -205,7 +205,7 @@ def download_sig(opts, sig, version=None):
     """Download signature from hostname"""
     code = None
     downloaded = False
-    useagent = 'ClamAV/0.101.1 (OS: linux-gnu, ARCH: x86_64, CPU: x86_64)'
+    useagent = 'ClamAV/0.103.0 (OS: linux-gnu, ARCH: x86_64, CPU: x86_64)'
     manager = PoolManager(
         headers=make_headers(user_agent=useagent),
         cert_reqs='CERT_REQUIRED',
