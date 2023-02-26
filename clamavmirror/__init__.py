@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 # vim: ai ts=4 sts=4 et sw=4
 # clamavmirror: ClamAV Signature Mirroring Tool
-# Copyright (C) 2015-2019 Andrew Colin Kissa <andrew@topdog.za.net>
+# Copyright (C) 2015-2023 Andrew Colin Kissa <andrew@topdog.za.net>
 #
 # This Source Code Form is subject to the terms of the Mozilla Public
 # License, v. 2.0. If a copy of the MPL was not distributed with this file,
@@ -88,9 +88,9 @@ from urllib3.util.request import make_headers
 from dns.resolver import query, NXDOMAIN
 
 
-VERSION_INFO = (0, 0, 4)
+VERSION_INFO = (0, 0, 5)
 __author__ = "Andrew Colin Kissa"
-__copyright__ = "© 2016-2019 Andrew Colin Kissa"
+__copyright__ = "© 2016-2023 Andrew Colin Kissa"
 __email__ = "andrew@topdog.za.net"
 __version__ = ".".join(map(str, VERSION_INFO))
 
